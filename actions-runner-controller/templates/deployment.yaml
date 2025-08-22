@@ -5,6 +5,13 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "actions-runner-controller.labels" . | nindent 4 }}
+  annotations:
+    # This annotation is critical. It tells Argo CD to apply this deployment
+    # in a later "wave", after other resources (like the certificate) have been created.
+    argocd.argoproj.io/sync-wave: "5"
+    {{- if .Values.deploymentAnnotations }}
+    {{- toYaml .Values.deploymentAnnotations | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -19,9 +26,9 @@ spec:
       {{- end }}
       labels:
         {{- include "actions-runner-controller.selectorLabels" . | nindent 8 }}
-      {{- with .Values.podLabels }}
+        {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -34,7 +41,10 @@ spec:
       priorityClassName: "{{ . }}"
       {{- end }}
       containers:
-      - args:
+      - name: manager
+        command:
+        - "/manager"
+        args:
         {{- $metricsHost := .Values.metrics.proxy.enabled | ternary "127.0.0.1" "0.0.0.0" }}
         {{- $metricsPort := .Values.metrics.proxy.enabled | ternary "8080" .Values.metrics.port }}
         - "--metrics-addr={{ $metricsHost }}:{{ $metricsPort }}"
@@ -67,14 +77,14 @@ spec:
         {{- if .Values.runner.statusUpdateHook.enabled }}
         - "--runner-status-update-hook"
         {{- end }}
-        {{- if .Values.logFormat  }}  
+        {{- if .Values.logFormat  }}
         - "--log-format={{ .Values.logFormat }}"
         {{- end }}
         {{- if .Values.dockerGID  }}
         - "--docker-gid={{ .Values.dockerGID }}"
         {{- end }}
-        command:
-        - "/manager"
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (cat "v" .Chart.AppVersion | replace " " "") }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         {{- if .Values.githubEnterpriseServerURL  }}
         - name: GITHUB_ENTERPRISE_URL
@@ -132,9 +142,6 @@ spec:
           value: {{ $val | quote }}
         {{- end }}
         {{- end }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (cat "v" .Chart.AppVersion | replace " " "") }}"
-        name: manager
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:
         - containerPort: {{ .Values.webhookPort }}
           name: webhook-server
@@ -150,27 +157,27 @@ spec:
           {{- toYaml .Values.securityContext | nindent 12 }}
         volumeMounts:
         {{- if .Values.authSecret.enabled }}
-        - mountPath: "/etc/actions-runner-controller"
-          name: secret
+        - name: secret
+          mountPath: "/etc/actions-runner-controller"
           readOnly: true
         {{- end }}
-        - mountPath: /tmp
-          name: tmp
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
+        - name: tmp
+          mountPath: /tmp
+        - name: cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
         {{- if .Values.additionalVolumeMounts }}
-          {{- toYaml .Values.additionalVolumeMounts | nindent 8 }} 
+          {{- toYaml .Values.additionalVolumeMounts | nindent 8 }}
         {{- end }}
       {{- if .Values.metrics.proxy.enabled }}
-      - args:
+      - name: kube-rbac-proxy
+        image: "{{ .Values.metrics.proxy.image.repository }}:{{ .Values.metrics.proxy.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
         - "--secure-listen-address=0.0.0.0:{{ .Values.metrics.port }}"
         - "--upstream=http://127.0.0.1:8080/"
         - "--logtostderr=true"
         - "--v=10"
-        image: "{{ .Values.metrics.proxy.image.repository }}:{{ .Values.metrics.proxy.image.tag }}"
-        name: kube-rbac-proxy
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:
         - containerPort: {{ .Values.metrics.port }}
           name: metrics-port
