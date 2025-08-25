@@ -1,55 +1,66 @@
+# This defines the Argo CD Application resource using the Custom Resource Definition (CRD) provided by Argo CD.
 apiVersion: argoproj.io/v1alpha1
+# This specifies that the resource is an Argo CD Application.
 kind: Application
+
+# --- METADATA: Basic information about this Application resource ---
 metadata:
-  # This is the name that will appear in the Argo CD UI.
+  # The name of the application as it will appear in the Argo CD UI.
   name: github-runner
-  # This Application resource itself will be created in the 'argocd' namespace.
+  # This Application resource itself must be created in the 'argocd' namespace
+  # so that the Argo CD controllers can find and manage it.
   namespace: argocd
-  # A finalizer ensures that when you delete this Application object,
-  # Argo CD will also delete all the resources it created (the controller, CRDs, etc.).
+  # A finalizer ensures that when you delete this Application object from the 'argocd' namespace,
+  # Argo CD will also clean up and delete all the resources it created in the target namespace (e.g., Deployments, Services).
   finalizers:
-    - resources-finalizer.argocd.argoproj.io
+    - resources-finalizer.argocd.argocroj.io
+
+# --- SPECIFICATION: The main configuration that defines the application's desired state ---
 spec:
-  # The Argo CD project this application belongs to (usually 'default').
+  # The Argo CD project this application belongs to. 'default' is the standard project.
   project: default
 
-  # --- SOURCE: Where the application's configuration lives ---
+  # --- SOURCE: Where the application's configuration lives (your Git repository) ---
   source:
-    # Your Git repository URL.
+    # The URL of your Git repository containing the Helm chart.
     repoURL: 'https://github.com/ravijha-alyssum/Helm-Demo'
     # The path to the Helm chart within your repository.
     path: actions-runner-controller
     # The Git branch to track for changes. HEAD points to the tip of the default branch.
     targetRevision: HEAD
-    # Helm-specific configuration.
-    helm:
-      # If you needed to override default values from the chart's values.yaml,
-      # you would specify them here. For example:
-      # values: |
-      #   replicaCount: 2
-      #   logLevel: "debug"
-      {} # Leaving this empty as we are using the default values from your chart for now.
+    # Helm-specific configuration. We are using the default values from the chart's values.yaml.
+    helm: {}
 
-  # --- DESTINATION: Where to deploy the application ---
+  # --- DESTINATION: Where to deploy the application's resources ---
   destination:
     # The URL of the target Kubernetes cluster.
-    # 'https://kubernetes.default.svc' means the same cluster where Argo CD is running.
+    # 'https://kubernetes.default.svc' is a special name that means "the same cluster where Argo CD is running".
     server: 'https://kubernetes.default.svc'
-    # The namespace where the actions-runner-controller will be deployed.
+    # The namespace where the actions-runner-controller and its resources will actually be deployed.
     namespace: actions-runner-system
 
-  # --- SYNC POLICY: How Argo CD should keep the application synchronized ---
+  # --- IGNORE DIFFERENCES: Rules to prevent OutOfSync status for expected changes ---
+  # This section is added to resolve the OutOfSync status.
+  ignoreDifferences:
+  # This rule tells Argo CD to ignore a specific field that is automatically added by the Kubernetes API server.
+  - group: apiextensions.k8s.io      # The API group for Custom Resource Definitions.
+    kind: CustomResourceDefinition     # The type of resource to apply this rule to.
+    # A list of fields to ignore, specified using JSON Pointer syntax.
+    jsonPointers:
+    - /spec/preserveUnknownFields    # Ignore the 'preserveUnknownFields' field, which Kubernetes adds by default.
+
+  # --- SYNC POLICY: How Argo CD should keep the application synchronized with Git ---
   syncPolicy:
-    # Enable automated synchronization.
+    # Configures automated synchronization.
     automated:
       # If you delete a resource from Git, Argo CD will automatically delete it from the cluster.
       prune: true
       # If Argo CD detects any manual changes (drift) in the cluster, it will automatically revert them to match the state in Git.
       selfHeal: true
     
-    # Advanced options to control how the sync is performed.
+    # Advanced options to control how the sync operation is performed.
     syncOptions:
-      # This is critical. It will automatically create the 'actions-runner-system' namespace if it doesn't exist.
+      # Automatically creates the destination namespace ('actions-runner-system') if it doesn't already exist.
       - CreateNamespace=true
-      # This is mandatory for this specific chart. It prevents the 'metadata.annotations: Too long' error by using a "replace" strategy for the large CRDs.
+      # Uses a "replace" strategy for resources. This is mandatory for this chart to avoid the 'metadata.annotations: Too long' error on the large CRDs.
       - Replace=true
