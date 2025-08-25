@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # This is the name that will appear in the Argo CD UI.
+  name: github-runner
+  # This Application resource itself will be created in the 'argocd' namespace.
+  namespace: argocd
+  # A finalizer ensures that when you delete this Application object,
+  # Argo CD will also delete all the resources it created (the controller, CRDs, etc.).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # The Argo CD project this application belongs to (usually 'default').
+  project: default
+
+  # --- SOURCE: Where the application's configuration lives ---
+  source:
+    # Your Git repository URL.
+    repoURL: 'https://github.com/ravijha-alyssum/Helm-Demo'
+    # The path to the Helm chart within your repository.
+    path: actions-runner-controller
+    # The Git branch to track for changes. HEAD points to the tip of the default branch.
+    targetRevision: HEAD
+    # Helm-specific configuration.
+    helm:
+      # If you needed to override default values from the chart's values.yaml,
+      # you would specify them here. For example:
+      # values: |
+      #   replicaCount: 2
+      #   logLevel: "debug"
+      {} # Leaving this empty as we are using the default values from your chart for now.
+
+  # --- DESTINATION: Where to deploy the application ---
+  destination:
+    # The URL of the target Kubernetes cluster.
+    # 'https://kubernetes.default.svc' means the same cluster where Argo CD is running.
+    server: 'https://kubernetes.default.svc'
+    # The namespace where the actions-runner-controller will be deployed.
+    namespace: actions-runner-system
+
+  # --- SYNC POLICY: How Argo CD should keep the application synchronized ---
+  syncPolicy:
+    # Enable automated synchronization.
+    automated:
+      # If you delete a resource from Git, Argo CD will automatically delete it from the cluster.
+      prune: true
+      # If Argo CD detects any manual changes (drift) in the cluster, it will automatically revert them to match the state in Git.
+      selfHeal: true
+    
+    # Advanced options to control how the sync is performed.
+    syncOptions:
+      # This is critical. It will automatically create the 'actions-runner-system' namespace if it doesn't exist.
+      - CreateNamespace=true
+      # This is mandatory for this specific chart. It prevents the 'metadata.annotations: Too long' error by using a "replace" strategy for the large CRDs.
+      - Replace=true
