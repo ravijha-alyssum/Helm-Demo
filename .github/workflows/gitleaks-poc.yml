@@ -1,0 +1,45 @@
+# .github/workflows/gitleaks-test.yml
+
+name: 'Gitleaks Personal Test'
+
+# This allows you to run the workflow manually from the Actions tab in your GitHub repository.
+on:
+  workflow_dispatch:
+
+jobs:
+  # This is the only job in the workflow.
+  gitleaks-scan:
+    name: 'Run Gitleaks Scan'
+    runs-on: ubuntu-latest # The job will run on a GitHub-hosted Ubuntu runner.
+
+    steps:
+      # Step 1: Checkout the repository you want to scan.
+      # We use fetch-depth: 0 to get the entire Git history,
+      # which allows Gitleaks to scan for secrets in past commits.
+      - name: 'Checkout Juice Shop Repo'
+        uses: actions/checkout@v4
+        with:
+          repository: 'juice-shop/juice-shop'
+          fetch-depth: 0
+
+      # Step 2: Run the Gitleaks Action.
+      # This action will download Gitleaks and scan the checked-out code.
+      - name: 'Run Gitleaks Scan'
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          # We specify the output format as JSON.
+          report_format: json
+          # We define the name of the output file.
+          report_path: 'gitleaks-report.json'
+          # This ensures the workflow continues even if secrets are found,
+          # allowing the report to be generated and uploaded every time.
+          continue-on-error: true
+
+      # Step 3: Upload the Gitleaks report as a workflow artifact.
+      # After the workflow completes, you will be able to download this file
+      # from the workflow run's summary page.
+      - name: 'Upload Gitleaks Report'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json```
