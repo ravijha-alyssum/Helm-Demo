@@ -1,0 +1,53 @@
+name: Run kube-bench Scan 
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  kube-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.33.1' # Specify your desired kubectl version
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Run kube-bench job
+        run: |
+          # Apply the job manifest from the official kube-bench repository
+          kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+
+          # Wait up to 5 minutes for the job to complete
+          echo "Waiting for kube-bench job to complete..."
+          kubectl wait --for=condition=complete job/kube-bench --timeout=5m
+
+      - name: Retrieve and Save Scan Results
+        run: |
+          # Get the name of the pod created by the job
+          POD_NAME=$(kubectl get pods --selector=job-name=kube-bench --output=jsonpath='{.items[0].metadata.name}')
+          
+          # Save the logs from the pod to a file
+          echo "Saving results to kube-bench-results.txt"
+          kubectl logs $POD_NAME > kube-bench-results.txt
+          
+          # Optional: Display the results in the workflow log as well
+          echo "Scan Results:"
+          cat kube-bench-results.txt
+
+      - name: Upload kube-bench Scan Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: kube-bench-report
+          path: kube-bench-results.txt
+          retention-days: 90 # Optional: Define how long to keep the artifact
