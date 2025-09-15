@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:   
 
 jobs:
   kube-bench:
@@ -50,4 +51,5 @@ jobs:
         with:
           name: kube-bench-report
           path: kube-bench-results.txt
-          retention-days: 90 # Optional: Define how long to keep the artifact
+          retention-days: 90
+
