@@ -16,18 +16,18 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'v1.28.2' # Best practice: Pin to your cluster's compatible version
+          version: 'v1.28.2' 
 
       - name: Configure kubectl
         run: |
           mkdir -p $HOME/.kube
-          # Try to decode the secret as Base64. If it fails, assume it's a raw string.
           echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config || echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
       - name: Run kube-bench job
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+          # Use 'apply' to create or update the job. '--force' helps if the job is stuck from a previous failed run.
+          kubectl apply --force -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
           echo "Waiting for kube-bench job to complete..."
           kubectl wait --for=condition=complete job/kube-bench --timeout=5m
 
@@ -46,3 +46,9 @@ jobs:
           path: kube-bench-results.txt
           retention-days: 90
 
+      - name: Clean up the Job
+        # Use if: always() to ensure this step runs even if previous steps fail
+        if: always()
+        run: |
+          echo "Deleting the kube-bench job..."
+          kubectl delete job kube-bench --ignore-not-found=true
