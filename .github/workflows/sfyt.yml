@@ -1,8 +1,5 @@
 name: Syft SBOM to DefectDojo for Root Code
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 jobs:
   syft-sbom:
@@ -36,7 +33,7 @@ jobs:
           echo "Number of test vulnerabilities found:"
           jq '.matches | length' vuln-test-grype.json
       - name: Upload SBOM and Vulnerability Reports as Artifacts
-        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v4.4.3 pinned to SHA
+        uses: actions/upload-artifact@v4
         with:
           name: scan-reports
           path: |
