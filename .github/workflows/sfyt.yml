@@ -1,72 +1,37 @@
-name: Syft SBOM to DefectDojo for Root Code
+name: Syft SBOM to DefectDojo
 on:
   workflow_dispatch:
+
 jobs:
-  syft-sbom:
+  syft-sbom-and-upload:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 pinned to SHA
+        uses: actions/checkout@v4
+
       - name: Install Syft & Grype
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
-      - name: Generate SBOM with Syft (CycloneDX JSON)
-        run: syft dir:. --exclude=./.git --exclude=./.github -o cyclonedx-json > sbom.json
-      - name: Scan SBOM with Grype (JSON report)
-        run: grype sbom:sbom.json -o json --by-cve > vuln-grype.json
-      - name: Debug Grype Output
-        run: |
-          echo "Root directory contents:"
-          ls -R .
-          echo "SBOM contents (first 50 lines):"
-          cat sbom.json | head -50
-          echo "Grype JSON output (first 50 lines):"
-          cat vuln-grype.json | head -50
-          echo "Number of vulnerabilities found:"
-          jq '.matches | length' vuln-grype.json
-      - name: Test Scan with Vulnerable Image (Alpine 3.10)
-        run: |
-          grype alpine:3.10 -o json --by-cve > vuln-test-grype.json
-          echo "Test scan JSON output (first 50 lines):"
-          cat vuln-test-grype.json | head -50
-          echo "Number of test vulnerabilities found:"
-          jq '.matches | length' vuln-test-grype.json
-      - name: Upload SBOM and Vulnerability Reports as Artifacts
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM
+        run: syft dir:. --exclude=./.git -o cyclonedx-json > sbom.json
+
+      - name: Scan SBOM with Grype
+        run: grype sbom:sbom.json -o json > vuln-report.json
+
+      - name: Upload Scan Report as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: scan-reports
-          path: |
-            sbom.json
-            vuln-grype.json
-            vuln-test-grype.json
-      - name: Upload to DefectDojo (Root Code Scan)
+          name: vulnerability-report
+          path: vuln-report.json
+
+      - name: Upload Report to DefectDojo
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@vuln-grype.json;type=application/json" \
+            -F "file=@vuln-report.json" \
             -F "scan_type=Anchore Grype" \
-            -F "engagement_name=root-code-scan" \
+            -F "engagement_name=CI-CD" \
             -F "product_name=MyProduct" \
-            -F "auto_create_context=true")
-          echo "DefectDojo response (root scan): $response"
-          http_code=$(echo "$response" | tail -n1)
-          if [ "$http_code" != "201" ]; then
-            echo "Root scan import failed with HTTP code $http_code"
-            exit 1
-          fi
-      - name: Upload to DefectDojo (Test Scan)
-        run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@vuln-test-grype.json;type=application/json" \
-            -F "scan_type=Anchore Grype" \
-            -F "engagement_name=syft-grype-sbom" \
-            -F "product_name=MyProduct" \
-            -F "auto_create_context=true")
-          echo "DefectDojo response (test scan): $response"
-          http_code=$(echo "$response" | tail -n1)
-          if [ "$http_code" != "201" ]; then
-            echo "Test scan import failed with HTTP code $http_code"
-            exit 1
-          fi
+            -F "auto_create_context=true"
