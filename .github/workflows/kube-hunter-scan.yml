@@ -22,8 +22,6 @@ jobs:
           echo "${{ github.event.inputs.kubeconfig_base64 }}" | base64 --decode > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
           echo "Kubeconfig setup complete."
-        # This step securely decodes the manually provided kubeconfig into the
-        # runner's filesystem so kubectl can use it.
 
       - name: 'Get Cluster API Server Address'
         id: get_cluster_info
@@ -31,15 +29,19 @@ jobs:
           CLUSTER_ENDPOINT=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
           echo "api_server=$CLUSTER_ENDPOINT" >> $GITHUB_OUTPUT
           echo "Discovered Cluster Endpoint: $CLUSTER_ENDPOINT"
-        # This step uses kubectl to parse the kubeconfig and extract the server URL.
-        # The URL is then passed to subsequent steps.
+
+      - name: 'Test Network Connectivity to API Server'
+        run: |
+          echo "Attempting to connect to the API server..."
+          # The -k flag ignores certificate errors, which is fine for a simple connectivity test.
+          # The --connect-timeout flag ensures the step doesn't hang for too long.
+          # We are checking for any response, not necessarily a successful one.
+          curl -k --connect-timeout 10 ${{ steps.get_cluster_info.outputs.api_server }}
+          echo "Connectivity test complete. If the above command timed out, the runner cannot reach your cluster."
 
       - name: 'Run Kube-Hunter Scan on the Runner'
         run: |
           echo "Starting Kube-Hunter remote scan against ${{ steps.get_cluster_info.outputs.api_server }}..."
-          # We run kube-hunter in a Docker container on the GitHub runner itself.
-          # The --remote flag tells kube-hunter to perform an external scan.
-          # The scan results are redirected from stdout to a JSON file.
           docker run --rm aquasec/kube-hunter \
             --remote ${{ steps.get_cluster_info.outputs.api_server }} \
             --report json \
@@ -52,4 +54,3 @@ jobs:
         with:
           name: kube-hunter-remote-scan-report
           path: kube-hunter-results.json
-        # This step packages the results file and uploads it to the workflow run.
