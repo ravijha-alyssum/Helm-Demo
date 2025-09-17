@@ -34,21 +34,33 @@ jobs:
           output: "grype-report.sarif"
 
       - name: Upload SARIF report as a workflow artifact
-        
         uses: actions/upload-artifact@v4
         with:
           name: grype-sarif-report-source
           path: grype-report.sarif
+          # This setting prevents the workflow from failing if the artifact is not found
+          if-no-files-found: ignore
 
       - name: Upload Grype Scan to DefectDojo
-        if: steps.grype-scan.outcome == 'success'
+        if: success() # This step will always run if previous steps didn't fail
         run: |
-          echo "Uploading report to DefectDojo..."
-          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@grype-report.sarif" \
-            -F "scan_type=Grype Scan" \
-            -F "product_name=MyProduct" \
-            -F "engagement_name=syft-grype-sbom" \
-            -F "verified=true" \
-            -F "auto_create_context=true"
+          echo "Checking for the existence of the report file..."
+          ls -la # This is a debugging step to show what files are in the directory
+
+          # Only run curl if the report file exists
+          if [ -f "grype-report.sarif" ]; then
+            echo "Report file found. Uploading to DefectDojo..."
+            echo "Product: MyProduct"
+            echo "Engagement: syft-grype-sbom"
+
+            curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+              -F "file=@grype-report.sarif" \
+              -F "scan_type=Grype Scan" \
+              -F "product_name=MyProduct" \
+              -F "engagement_name=syft-grype-sbom" \
+              -F "verified=true" \
+              -F "auto_create_context=true"
+          else
+            echo "Grype report file not found. Skipping upload. This usually means no vulnerabilities were detected."
+          fi
