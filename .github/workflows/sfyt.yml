@@ -1,7 +1,6 @@
 # .github/workflows/syft-grype-scan.yml
 name: On-Demand Security Scan
 
-# TRIGGER: Manually triggered via the GitHub UI.
 on:
   workflow_dispatch:
     inputs:
@@ -21,19 +20,15 @@ jobs:
       actions: read
 
     steps:
-      # 1. CHECKOUT: Checks out the code from the repository specified in the input.
       - name: Checkout target repository
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.inputs.repo_url }}
 
-      # 2. BUILD IMAGE: Build the Docker image from the checked-out code.
       - name: Build container image
         run: |
           docker build -t scan-target:${{ github.run_id }} .
 
-      # 3. GENERATE SBOM: Use Syft to create a Software Bill of Materials.
-      #    **FIX**: Added version tag @v0
       - name: Generate SBOM with Syft
         uses: anchore/syft-action@v0
         with:
@@ -41,8 +36,6 @@ jobs:
           format: "spdx-json"
           output: "sbom.spdx.json"
 
-      # 4. SCAN FOR VULNERABILITIES: Use Grype to scan the image.
-      #    **FIX**: Added version tag @v0
       - name: Scan image with Grype
         uses: anchore/grype-action@v0
         with:
@@ -50,7 +43,6 @@ jobs:
           fail-on-severity: "critical"
           output-format: "table,sarif,json"
 
-      # 5. UPLOAD ARTIFACT (TABLE): Store the human-readable report.
       - name: Upload Grype report as Artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -58,14 +50,12 @@ jobs:
           name: grype-report-table
           path: grype-results.txt
 
-      # 6. UPLOAD SARIF: Upload to the Security tab.
       - name: Upload SARIF report to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: grype-results.sarif
 
-      # 7. UPLOAD SBOM: Store the SBOM as an artifact.
       - name: Upload SBOM as Artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -73,18 +63,16 @@ jobs:
           name: sbom
           path: sbom.spdx.json
 
-      # 8. UPLOAD TO DEFECTDOJO: Upload the JSON report to DefectDojo.
+      # ** MODIFIED STEP **
+      # The product_name and engagement_name are now hardcoded as requested.
       - name: Upload to DefectDojo
         if: always()
         run: |
-          # Sanitize the repo_url to create a valid product name
-          PRODUCT_NAME=$(echo "${{ github.event.inputs.repo_url }}" | tr / -)
-
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@grype-results.json" \
             -F "scan_type=Grype Scan" \
             -F "product_name=MyProduct" \
             -F "engagement_name=syft-grype-sbom" \
-            -F "auto_create_context=true" 
-            
+            -F "auto_create_context=true" \
+            --fail
