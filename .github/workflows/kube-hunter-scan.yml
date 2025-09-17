@@ -1,4 +1,4 @@
-name: 'Kube-Hunter Scan
+name: 'Kube-Hunter Scan'
 
 on:
   workflow_dispatch:
