@@ -30,15 +30,12 @@ jobs:
         with:
           sbom: "sbom-source.json"
           fail-build: false
-          # CORRECTED: The action defaults to 'results.sarif' for this format.
-          # The invalid 'output' parameter has been removed.
           output-format: sarif
 
       - name: Upload SARIF report as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: grype-sarif-report-source
-          # CORRECTED: Use the actual filename created by the scan action.
           path: results.sarif
           if-no-files-found: ignore
 
@@ -48,15 +45,15 @@ jobs:
           echo "Checking for the existence of the report file..."
           ls -la # For debugging
 
-          # CORRECTED: Check for the actual filename.
           if [ -f "results.sarif" ]; then
             echo "Report file 'results.sarif' found. Uploading to DefectDojo..."
             echo "Product: MyProduct"
             echo "Engagement: syft-grype-sbom"
 
+            # CORRECTED: The multi-line curl command is now clean with no
+            # interspersed comments or trailing whitespace.
             curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-              # CORRECTED: Upload the actual report file.
               -F "file=@results.sarif" \
               -F "scan_type=Grype Scan" \
               -F "product_name=MyProduct" \
