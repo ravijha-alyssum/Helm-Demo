@@ -1,0 +1,92 @@
+# .github/workflows/syft-grype-scan.yml
+name: On-Demand Security Scan
+
+# 1. TRIGGER: This workflow is now manually triggered via the GitHub UI.
+# It accepts a repository URL as an input.
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: 'URL of the GitHub repository to Scan'
+        required: true
+        default: 'juice-shop/juice-shop'
+
+jobs:
+  scan-repository:
+    name: Scan External Repository
+    runs-on: ubuntu-latest
+
+    # PERMISSIONS: Grant necessary permissions.
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      # 2. CHECKOUT: Checks out the code from the repository specified in the 'repo_url' input.
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.repo_url }}
+
+      # 3. BUILD IMAGE: Build the Docker image from the checked-out code.
+      #    Using the workflow run ID for a unique tag instead of a commit SHA.
+      - name: Build container image
+        run: |
+          docker build -t scan-target:${{ github.run_id }} .
+
+      # 4. GENERATE SBOM: Use Syft to create a Software Bill of Materials.
+      - name: Generate SBOM with Syft
+        uses: anchore/syft-action@v0
+        with:
+          image: "scan-target:${{ github.run_id }}"
+          format: "spdx-json"
+          output: "sbom.spdx.json"
+
+      # 5. SCAN FOR VULNERABILITIES: Use Grype to scan the image.
+      - name: Scan image with Grype
+        uses: anchore/grype-action@v0
+        with:
+          image: "scan-target:${{ github.run_id }}"
+          fail-on-severity: "critical"
+          output-format: "table,sarif,json"
+
+      # 6. UPLOAD ARTIFACT (TABLE): Store the human-readable report.
+      - name: Upload Grype report as Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grype-report-table
+          path: grype-results.txt
+
+      # 7. UPLOAD SARIF: This still uploads to the Security tab of the repo hosting the workflow.
+      - name: Upload SARIF report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: grype-results.sarif
+
+      # 8. UPLOAD SBOM: Store the SBOM as an artifact.
+      - name: Upload SBOM as Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+      # 9. UPLOAD TO DEFECTDOJO: Upload the JSON report to DefectDojo.
+      #    Engagement name is now based on the repo URL and run ID.
+      - name: Upload to DefectDojo
+        if: always()
+        run: |
+          # Sanitize the repo_url to create a valid product name (replace '/' with '-')
+          PRODUCT_NAME=$(echo "${{ github.event.inputs.repo_url }}" | tr / -)
+
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@grype-results.json" \
+            -F "scan_type=Grype Scan" \
+            -F "product_name=MyProject" \
+            -F "engagement_name=syft-grype-sbom" \
+            -F "auto_create_context=true" 
+           
