@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd7i901bbe5b1630ceea73d27597364c9af683 # v4.2.2 pinned to SHA
+        uses: actions/checkout@v4 # Recommended: Use the major version tag
 
       - name: Install Syft & Grype
         run: |
