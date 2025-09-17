@@ -55,7 +55,7 @@ jobs:
             curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
               -F "file=@results.sarif" \
-              -F "scan_type=Grype Scan" \
+              -F "scan_type=Grype" \
               -F "product_name=MyProduct" \
               -F "engagement_name=syft-grype-sbom" \
               -F "verified=true" \
