@@ -42,8 +42,8 @@ jobs:
             vuln-test-grype.json
       - name: Upload to DefectDojo (Root Code Scan)
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_HOST }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@vuln-grype.json;type=application/json" \
             -F "scan_type=Anchore Grype" \
             -F "engagement_name=root-code-scan" \
@@ -57,7 +57,7 @@ jobs:
           fi
       - name: Upload to DefectDojo (Test Scan)
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_HOST }}/api/v2/import-scan/" \
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@vuln-test-grype.json;type=application/json" \
             -F "scan_type=Anchore Grype" \
