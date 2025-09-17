@@ -1,38 +1,60 @@
-name: Syft SBOM to DefectDojo for Root Code
+name: Simplified Source Scan to DefectDojo
+
 on:
   workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Repository to scan (e.g., juice-shop/juice-shop)'
+        required: true
+        default: 'juice-shop/juice-shop'
+
 jobs:
-  syft-sbom:
+  scan-source-and-upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4 # Recommended: Use the major version tag
-
-      - name: Install Syft & Grype
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
-
-      - name: Generate SBOM with Syft (CycloneDX JSON)
-        run: syft dir:. --exclude=./.git --exclude=./.github -o cyclonedx-json > sbom.json
-
-      - name: Scan SBOM with Grype (JSON report)
-        run: grype sbom:sbom.json -o json > vuln-grype.json
-
-      - name: Upload Scan Reports as Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Checkout target repository
+        uses: actions/checkout@v3
         with:
-          name: scan-reports
-          path: |
-            sbom.json
-            vuln-grype.json
+          # Use the single input to check out the specified repository's default branch
+          repository: ${{ github.event.inputs.target_repo }}
+          path: './source-to-scan'
 
-      - name: Upload to DefectDojo
+      - name: Generate SBOM from source directory
+        uses: anchore/sbom-action@v0
+        with:
+          source: "dir:./source-to-scan"
+          output-file: "sbom-source.json"
+
+      - name: Scan SBOM with Grype and Generate SARIF Report
+        id: grype-scan
+        uses: anchore/scan-action@v3
+        with:
+          sbom: "sbom-source.json"
+          fail-build: false
+          output-format: sarif
+          output: "grype-report.sarif"
+
+      - name: Upload SARIF report as a workflow artifact
+        # This step now runs before the DefectDojo upload.
+        uses: actions/upload-artifact@v3
+        with:
+          name: grype-sarif-report-source
+          path: grype-report.sarif
+
+      - name: Upload Grype Scan to DefectDojo
+        # This is now the final step in the job.
+        if: steps.grype-scan.outcome == 'success'
         run: |
-          curl -f -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+          
+          
+          echo "Uploading report to DefectDojo..."
+          
+
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@vuln-grype.json;type=application/json" \
-            -F "scan_type=Anchore Grype" \
-            -F "engagement_name=syft-grype-sbom" \
+            -F "file=@grype-report.sarif" \
+            -F "scan_type=Grype Scan" \
             -F "product_name=MyProduct" \
+            -F "engagement_name=syft-grype-sbom" \
+            -F "verified=true" \
             -F "auto_create_context=true"
