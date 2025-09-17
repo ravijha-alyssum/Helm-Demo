@@ -12,7 +12,7 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin v0.100.0
       - name: Generate SBOM with Syft (CycloneDX JSON)
-        run: syft dir:. --exclude=.git --exclude=./.github -o cyclonedx-json > sbom.json
+        run: syft dir:. --exclude=./.git --exclude=./.github -o cyclonedx-json > sbom.json
       - name: Scan SBOM with Grype (JSON report)
         run: grype sbom:sbom.json -o json --by-cve > vuln-grype.json
       - name: Debug Grype Output
