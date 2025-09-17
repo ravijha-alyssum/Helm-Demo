@@ -1,4 +1,4 @@
-name: Simplified Source Scan to DefectDojo
+name: Source Scan with Syft Grype to DefectDojo
 
 on:
   workflow_dispatch:
@@ -13,9 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          # Use the single input to check out the specified repository's default branch
           repository: ${{ github.event.inputs.target_repo }}
           path: './source-to-scan'
 
@@ -35,21 +34,16 @@ jobs:
           output: "grype-report.sarif"
 
       - name: Upload SARIF report as a workflow artifact
-        # This step now runs before the DefectDojo upload.
-        uses: actions/upload-artifact@v3
+        
+        uses: actions/upload-artifact@v4
         with:
           name: grype-sarif-report-source
           path: grype-report.sarif
 
       - name: Upload Grype Scan to DefectDojo
-        # This is now the final step in the job.
         if: steps.grype-scan.outcome == 'success'
         run: |
-          
-          
           echo "Uploading report to DefectDojo..."
-          
-
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@grype-report.sarif" \
