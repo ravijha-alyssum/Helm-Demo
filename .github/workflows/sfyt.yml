@@ -17,7 +17,7 @@ jobs:
         run: syft dir:. --exclude=./.git --exclude=./.github -o cyclonedx-json > sbom.json
 
       - name: Scan SBOM with Grype (JSON report)
-        run: grype sbom:sbom.json -o json --by-cve > vuln-grype.json
+        run: grype sbom:sbom.json -o json > vuln-grype.json
 
       - name: Upload Scan Reports as Artifacts
         uses: actions/upload-artifact@v4
