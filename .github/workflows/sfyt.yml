@@ -33,6 +33,6 @@ jobs:
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@vuln-grype.json;type=application/json" \
             -F "scan_type=Anchore Grype" \
-            -F "engagement_name=root-code-scan" \
+            -F "engagement_name=syft-grype-sbom" \
             -F "product_name=MyProduct" \
             -F "auto_create_context=true"
