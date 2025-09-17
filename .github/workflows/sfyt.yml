@@ -50,12 +50,11 @@ jobs:
             echo "Product: MyProduct"
             echo "Engagement: syft-grype-sbom"
 
-            # CORRECTED: The multi-line curl command is now clean with no
-            # interspersed comments or trailing whitespace.
             curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
               -F "file=@results.sarif" \
-              -F "scan_type=Grype" \
+              # CORRECTED: Using the format-specific parser name "SARIF".
+              -F "scan_type=SARIF" \
               -F "product_name=MyProduct" \
               -F "engagement_name=syft-grype-sbom" \
               -F "verified=true" \
