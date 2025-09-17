@@ -1,57 +1,72 @@
-name: Source Scan with Syft Grype to DefectDojo
+name: Flexible Security Scan to DefectDojo
 
 on:
   workflow_dispatch:
     inputs:
-      target_repo:
-        description: 'Repository to scan (e.g., juice-shop/juice-shop)'
+      scan_type:
+        description: 'Select the type of asset to scan'
+        required: true
+        type: choice
+        options:
+        - Source Repository
+        - Container Image
+      scan_target:
+        description: 'Enter the repo (org/repo) or image (name:tag)'
         required: true
         default: 'juice-shop/juice-shop'
 
 jobs:
-  scan-source-and-upload:
+  scan-and-upload:
     runs-on: ubuntu-latest
     steps:
+      # Step 1: Checkout code (ONLY runs if 'Source Repository' is selected)
       - name: Checkout target repository
+        if: github.event.inputs.scan_type == 'Source Repository'
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.target_repo }}
+          repository: ${{ github.event.inputs.scan_target }}
           path: './source-to-scan'
 
-      - name: Generate SBOM from source directory
+      # Step 2: Generate SBOM from the source directory
+      - name: Generate SBOM from source
+        if: github.event.inputs.scan_type == 'Source Repository'
         uses: anchore/sbom-action@v0
         with:
           source: "dir:./source-to-scan"
-          output-file: "sbom-source.json"
+          output-file: "sbom-scan-results.json"
 
-      - name: Scan SBOM with Grype and Generate SARIF Report
+      # Step 3: Generate SBOM from the container image
+      - name: Generate SBOM from image
+        if: github.event.inputs.scan_type == 'Container Image'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ github.event.inputs.scan_target }}
+          output-file: "sbom-scan-results.json"
+
+      # Step 4: Scan the generated SBOM with Grype (runs for both types)
+      - name: Scan SBOM with Grype for vulnerabilities
         id: grype-scan
         uses: anchore/scan-action@v3
         with:
-          sbom: "sbom-source.json"
+          sbom: "sbom-scan-results.json"
           fail-build: false
           output-format: sarif
 
-      - name: Upload SARIF report as a workflow artifact
+      # Step 5: Upload the SARIF report as a workflow artifact
+      - name: Upload SARIF report as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: grype-sarif-report-source
+          name: grype-sarif-report
           path: results.sarif
           if-no-files-found: ignore
 
+      # Step 6: Upload the final report to DefectDojo
       - name: Upload Grype Scan to DefectDojo
         if: success()
         run: |
-          echo "Checking for the existence of the report file..."
-          ls -la # For debugging
-
           if [ -f "results.sarif" ]; then
-            echo "Report file 'results.sarif' found. Uploading to DefectDojo..."
-            echo "Product: MyProduct"
-            echo "Engagement: syft-grype-sbom"
+            echo "Report file found. Uploading results to DefectDojo for Product: MyProduct"
 
-            # This multi-line curl command must be clean.
-            # Ensure there are NO spaces or comments after the '\' on each line.
             curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
               -F "file=@results.sarif" \
@@ -61,5 +76,5 @@ jobs:
               -F "verified=true" \
               -F "auto_create_context=true"
           else
-            echo "Grype report file not found. Skipping upload. This usually means no vulnerabilities were detected."
+            echo "Grype report was not generated. Skipping DefectDojo upload. This usually means no vulnerabilities were found."
           fi
