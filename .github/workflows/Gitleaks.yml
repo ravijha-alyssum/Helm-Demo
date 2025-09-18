@@ -24,14 +24,22 @@ jobs:
           repository: ${{ github.event.inputs.repo_url }}
           fetch-depth: 0 # Get entire history for a full scan
 
-      # Step 2: Run the license-free v1 Gitleaks Action.
-      - name: 'Run Gitleaks Scan'
-        uses: gitleaks/gitleaks-action@v1
-        # This ensures the workflow proceeds to the upload step even if secrets are found.
-        continue-on-error: true
-        with:
-          # For the v1 action, all commands are passed via the 'args' input.
-          args: --path="." --report="gitleaks-report.json" --report-format="json"
+      # Step 2: Manually download and run a license-free Gitleaks version.
+      # This approach is the most reliable and bypasses issues with the v1 action.
+      - name: 'Run Gitleaks Manually'
+        run: |
+          # 1. Download and extract a specific, license-free version of Gitleaks.
+          GITLEAKS_VERSION="8.18.2"
+          wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          tar -xzf gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          
+          # 2. Run the scan with explicit, direct commands.
+          #    --source: Points to the directory to scan ('.').
+          #    --report-path: The name of the output file.
+          #    --report-format: The format of the report.
+          #    --exit-code 0: This is critical. It ensures this step always succeeds
+          #                 so the workflow can proceed to the upload steps.
+          ./gitleaks detect --source="." --report-path="gitleaks-report.json" --report-format="json" --exit-code 0
 
       # Step 3: Upload the Gitleaks report as a workflow artifact for debugging.
       - name: 'Upload Gitleaks Report Artifact'
@@ -42,19 +50,14 @@ jobs:
 
       # Step 4: Upload the scan results to DefectDojo.
       - name: 'Upload to DefectDojo'
-        # This step will run regardless of the scan step's outcome to ensure upload is attempted.
-        if: success() || failure()
+        # This step will now always work because the previous step guarantees
+        # that 'gitleaks-report.json' is created.
+        if: success()
         run: |
-          # Check if the report file exists before trying to upload it.
-          if [ ! -f gitleaks-report.json ]; then
-            echo "Gitleaks report not found. Skipping upload."
-            exit 0
-          fi
-
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@gitleaks-report.json;type=application/json" \
             -F "scan_type=Gitleaks Scan" \
             -F "engagement_name=gitleaks-ci" \
-            -F "product_name=MyProduct" \ # The product name is now hardcoded here
+            -F "product_name=MyProduct" \
             -F "auto_create_context=true"
