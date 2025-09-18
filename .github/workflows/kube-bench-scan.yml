@@ -53,7 +53,7 @@ jobs:
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@kube-bench-results.json" \
-            -F "scan_type=Kube-bench" \
+            -F "scan_type=kube-bench Scan" \
             -F "engagement_name=Kube-bench Scan" \
             -F "product_name=MyProduct" \
             -F "auto_create_context=true" 
