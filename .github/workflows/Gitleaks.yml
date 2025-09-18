@@ -1,0 +1,60 @@
+# .github/workflows/gitleaks-standalone.yml
+
+name: 'Gitleaks Standalone Scan with DefectDojo Upload'
+
+# This allows you to run the workflow manually from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: 'URL of the public GitHub repository to scan'
+        required: true
+        default: 'juice-shop/juice-shop'
+
+jobs:
+  gitleaks-scan-and-upload:
+    name: 'Run Gitleaks Scan and Upload to DefectDojo'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository you want to scan.
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.repo_url }}
+          fetch-depth: 0 # Get entire history for a full scan
+
+      # Step 2: Run the license-free v1 Gitleaks Action.
+      - name: 'Run Gitleaks Scan'
+        uses: gitleaks/gitleaks-action@v1
+        # This ensures the workflow proceeds to the upload step even if secrets are found.
+        continue-on-error: true
+        with:
+          # For the v1 action, all commands are passed via the 'args' input.
+          args: --path="." --report="gitleaks-report.json" --report-format="json"
+
+      # Step 3: Upload the Gitleaks report as a workflow artifact for debugging.
+      - name: 'Upload Gitleaks Report Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+      # Step 4: Upload the scan results to DefectDojo.
+      - name: 'Upload to DefectDojo'
+        # This step will run regardless of the scan step's outcome to ensure upload is attempted.
+        if: success() || failure()
+        run: |
+          # Check if the report file exists before trying to upload it.
+          if [ ! -f gitleaks-report.json ]; then
+            echo "Gitleaks report not found. Skipping upload."
+            exit 0
+          fi
+
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@gitleaks-report.json;type=application/json" \
+            -F "scan_type=Gitleaks Scan" \
+            -F "engagement_name=gitleaks-ci" \
+            -F "product_name=MyProduct" \ # The product name is now hardcoded here
+            -F "auto_create_context=true"
