@@ -26,9 +26,9 @@ jobs:
           chmod 600 $HOME/.kube/config
           echo "kubectl configured successfully."
 
-      - name: Run kube-bench job
+      - name: Run kube-bench job and RBAC
         run: |
-          # MODIFIED: Applying the job manifest from the root of your repository
+          # Applying the multi-document manifest from your repository
           kubectl apply --force -f kube-hunt-job.yml
           echo "Waiting for kube-bench job to complete..."
           kubectl wait --for=condition=complete job/kube-bench --timeout=5m
@@ -53,13 +53,16 @@ jobs:
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "file=@kube-bench-results.json" \
-            -F "scan_type=kube-bench Scan" \
+            -F "scan_type=Kube-bench" \
             -F "engagement_name=Kube-bench Scan" \
             -F "product_name=MyProduct" \
             -F "auto_create_context=true" 
 
-      - name: Clean up the Job
+      - name: Clean up all resources
         if: always()
         run: |
-          echo "Deleting the kube-bench job..."
+          echo "Deleting kube-bench resources..."
           kubectl delete job kube-bench --ignore-not-found=true
+          kubectl delete clusterrolebinding kube-bench --ignore-not-found=true
+          kubectl delete clusterrole kube-bench --ignore-not-found=true
+          kubectl delete serviceaccount kube-bench --ignore-not-found=true
