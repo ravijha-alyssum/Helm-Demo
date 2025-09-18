@@ -1,13 +1,14 @@
 name: Run kube-bench Scan 
-
 on:
-  #push:
-    #branches:
-      #- main
   workflow_dispatch:
+    inputs:
+      kube_config_b64:
+        description: 'Base64 encoded kubeconfig data'
+        required: true
+        type: string
 
 jobs:
-  kube-bench:
+  kube-bench-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -16,17 +17,19 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'v1.28.2' 
+          version: 'v1.28.2'
 
-      - name: Configure kubectl
+      - name: Configure kubectl from workflow input
         run: |
           mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > $HOME/.kube/config || echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
+          # Use the input provided when the workflow was triggered
+          # The input is expected to be Base64 encoded for reliability
+          echo "${{ github.event.inputs.kube_config_b64 }}" | base64 --decode > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
+          echo "kubectl configured successfully."
 
       - name: Run kube-bench job
         run: |
-          # Use 'apply' to create or update the job. '--force' helps if the job is stuck from a previous failed run.
           kubectl apply --force -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
           echo "Waiting for kube-bench job to complete..."
           kubectl wait --for=condition=complete job/kube-bench --timeout=5m
@@ -39,15 +42,24 @@ jobs:
           echo "Scan Results:"
           cat kube-bench-results.txt
 
-      - name: Upload kube-bench Scan Results
+      - name: Upload kube-bench Scan Results as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kube-bench-report
           path: kube-bench-results.txt
           retention-days: 90
 
+      - name: Upload Results to DefectDojo
+        run: |
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@kube-bench-results.txt" \
+            -F "scan_type=Kube-bench" \
+            -F "engagement_name=Kube-bench" \
+            -F "product_name=MyProduct" \
+            -F "auto_create_context=true" 
+
       - name: Clean up the Job
-        # Use if: always() to ensure this step runs even if previous steps fail
         if: always()
         run: |
           echo "Deleting the kube-bench job..."
