@@ -37,23 +37,23 @@ jobs:
       - name: Retrieve and Save Scan Results
         run: |
           POD_NAME=$(kubectl get pods --selector=job-name=kube-bench --output=jsonpath='{.items[0].metadata.name}')
-          echo "Saving results to kube-bench-results.json"
-          kubectl logs $POD_NAME > kube-bench-results.json
+          echo "Saving results to kube-bench-results."
+          kubectl logs $POD_NAME > kube-bench-results.txt
           echo "Scan Results:"
-          cat kube-bench-results.json
+          cat kube-bench-results.txt
 
       - name: Upload kube-bench Scan Results as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: kube-bench-report
-          path: kube-bench-results.json
+          path: kube-bench-results.txt
           retention-days: 90
 
       - name: Upload Results to DefectDojo
         run: |
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@kube-bench-results.json" \
+            -F "file=@kube-bench-results.txt" \
             -F "scan_type=kube-bench Scan" \
             -F "engagement_name=Kube-bench Scan" \
             -F "product_name=MyProduct" \
