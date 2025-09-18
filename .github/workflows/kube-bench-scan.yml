@@ -22,38 +22,37 @@ jobs:
       - name: Configure kubectl from workflow input
         run: |
           mkdir -p $HOME/.kube
-          # Use the input provided when the workflow was triggered
-          # The input is expected to be Base64 encoded for reliability
           echo "${{ github.event.inputs.kube_config_b64 }}" | base64 --decode > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
           echo "kubectl configured successfully."
 
       - name: Run kube-bench job
         run: |
-          kubectl apply --force -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+          # MODIFIED: Applying the job manifest from the root of your repository
+          kubectl apply --force -f kube-hunt-job.yml
           echo "Waiting for kube-bench job to complete..."
           kubectl wait --for=condition=complete job/kube-bench --timeout=5m
 
       - name: Retrieve and Save Scan Results
         run: |
           POD_NAME=$(kubectl get pods --selector=job-name=kube-bench --output=jsonpath='{.items[0].metadata.name}')
-          echo "Saving results to kube-bench-results."
-          kubectl logs $POD_NAME > kube-bench-results.txt
+          echo "Saving results to kube-bench-results.json"
+          kubectl logs $POD_NAME > kube-bench-results.json
           echo "Scan Results:"
-          cat kube-bench-results.txt
+          cat kube-bench-results.json
 
       - name: Upload kube-bench Scan Results as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kube-bench-report
-          path: kube-bench-results.txt
+          name: kube-bench-report-json
+          path: kube-bench-results.json
           retention-days: 90
 
       - name: Upload Results to DefectDojo
         run: |
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@kube-bench-results.txt" \
+            -F "file=@kube-bench-results.json" \
             -F "scan_type=kube-bench Scan" \
             -F "engagement_name=Kube-bench Scan" \
             -F "product_name=MyProduct" \
