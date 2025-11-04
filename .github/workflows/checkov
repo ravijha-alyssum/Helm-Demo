@@ -1,0 +1,51 @@
+name: Checkov Terraform 
+
+on:
+  workflow_dispatch:
+
+jobs:
+  checkov-defectdojo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Terraform Repository
+        run: git clone https://github.com/octodemo/advanced-security-terraform.git repo
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov Scan
+        # Runs a scan, ensures the workflow continues on failure, and saves output to a file.
+        run: |
+          checkov --directory repo/terraform \
+            --output json \
+            --soft-fail > repo/checkov_output.json
+
+      - name: Upload Scan Results to DefectDojo
+        # Uploads the report using hardcoded names for the product and engagement.
+        # DefectDojo will create them automatically if they don't exist.
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+        run: |
+          RESPONSE=$(curl -w "\n%{http_code}" -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+            -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+            -F "file=@repo/checkov_output.json" \
+            -F "scan_type=Checkov Scan" \
+            -F "engagement_name=checkov" \
+            -F "product_name=MyProduct" \
+            -F "auto_create_context=true")
+          
+          # Check the HTTP response code to confirm success or failure
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "HTTP Status Code: ${HTTP_CODE}"
+          echo "Response Body: ${BODY}"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Successfully uploaded scan results to DefectDojo!"
+          else
+            echo "❌ Failed to upload scan results."
+            exit 1
+          fi
