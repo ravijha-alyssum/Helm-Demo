@@ -2,9 +2,9 @@ name: Checkov Terraform & DefectDojo Upload
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  #push:
+    #branches:
+      #- main
 
 jobs:
   checkov-defectdojo:
@@ -34,5 +34,5 @@ jobs:
             -F "file=@repo/checkov_output.json;type=application/json" \
             -F "scan_type=Checkov Scan" \
             -F "engagement_name=checkov" \
-            -F "product_name=Advanced-Security-Terraform" \
+            -F "product_name=MyProduct" \
             -F "auto_create_context=true"
