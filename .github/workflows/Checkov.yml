@@ -14,10 +14,13 @@ jobs:
       - name: Clone Advanced Security Terraform
         run: git clone https://github.com/octodemo/advanced-security-terraform.git repo
 
-      - name: Install Checkov and Run Scan
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov Scan
         run: |
-          pip install checkov
-          checkov --directory repo/terraform --output json --output-file repo/checkov_output.json--soft-fail
+          checkov --directory repo/terraform --output json --output-file repo/checkov_output.json --soft-fail
+
       - name: Upload Checkov JSON Report
         uses: actions/upload-artifact@v4
         with:
