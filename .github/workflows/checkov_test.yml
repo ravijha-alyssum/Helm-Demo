@@ -1,0 +1,100 @@
+name: Checkov Terraform & DefectDojo 
+
+on:
+  workflow_dispatch:
+  #push:
+    #branches:
+      #- main
+
+jobs:
+  checkov-defectdojo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Advanced Security Terraform
+        run: git clone https://github.com/octodemo/advanced-security-terraform.git repo
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov Scan
+        run: |
+          checkov --directory repo/terraform \
+            --output json \
+            --compact \
+            --soft-fail > repo/checkov_output.json || true
+
+      - name: Upload Checkov JSON Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: repo/checkov_output.json
+
+      - name: Get or Create Product and Engagement
+        id: setup_defectdojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+        run: |
+          # Get or create product
+          echo "Checking for existing product..."
+          PRODUCT_ID=$(curl -s -X GET "${DEFECTDOJO_URL}/api/v2/products/?name=MyProduct" \
+            -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+            -H "Content-Type: application/json" | jq -r '.results[0].id // empty')
+          
+          if [ -z "$PRODUCT_ID" ]; then
+            echo "Creating new product..."
+            PRODUCT_ID=$(curl -s -X POST "${DEFECTDOJO_URL}/api/v2/products/" \
+              -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"name":"MyProduct","description":"Checkov Security Scanning","prod_type":1}' | jq -r '.id')
+          fi
+          echo "Product ID: ${PRODUCT_ID}"
+          
+          # Get or create engagement
+          echo "Checking for existing engagement..."
+          ENGAGEMENT_ID=$(curl -s -X GET "${DEFECTDOJO_URL}/api/v2/engagements/?name=checkov&product=${PRODUCT_ID}" \
+            -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+            -H "Content-Type: application/json" | jq -r '.results[0].id // empty')
+          
+          if [ -z "$ENGAGEMENT_ID" ]; then
+            echo "Creating new engagement..."
+            ENGAGEMENT_ID=$(curl -s -X POST "${DEFECTDOJO_URL}/api/v2/engagements/" \
+              -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"checkov\",\"description\":\"Automated Checkov Scans\",\"product\":${PRODUCT_ID},\"target_start\":\"$(date +%Y-%m-%d)\",\"target_end\":\"$(date -d '+30 days' +%Y-%m-%d)\",\"status\":\"In Progress\"}" | jq -r '.id')
+          fi
+          echo "Engagement ID: ${ENGAGEMENT_ID}"
+          
+          echo "ENGAGEMENT_ID=${ENGAGEMENT_ID}" >> $GITHUB_OUTPUT
+
+      - name: Upload to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+          ENGAGEMENT_ID: ${{ steps.setup_defectdojo.outputs.ENGAGEMENT_ID }}
+        run: |
+          echo "Uploading Checkov results to DefectDojo..."
+          RESPONSE=$(curl -w "\n%{http_code}" -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+            -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+            -F "file=@repo/checkov_output.json" \
+            -F "scan_type=Checkov Scan" \
+            -F "engagement=${ENGAGEMENT_ID}" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "close_old_findings=false" \
+            -F "skip_duplicates=true")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "HTTP Status Code: ${HTTP_CODE}"
+          echo "Response Body: ${BODY}"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Successfully uploaded scan results to DefectDojo!"
+          else
+            echo "❌ Failed to upload scan results. Status: ${HTTP_CODE}"
+            echo "$BODY"
+            exit 1
+          fi
