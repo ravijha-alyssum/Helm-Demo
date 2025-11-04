@@ -1,0 +1,38 @@
+name: Checkov Terraform & DefectDojo Upload
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  checkov-defectdojo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Advanced Security Terraform
+        run: git clone https://github.com/octodemo/advanced-security-terraform.git repo
+
+      - name: Install Checkov and Run Scan
+        run: |
+          pip install checkov
+          checkov --directory repo/terraform --output json --output-file repo/checkov_output.json--soft-fail
+      - name: Upload Checkov JSON Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: repo/checkov_output.json
+
+      - name: Upload to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+        run: |
+          curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+            -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+            -F "file=@repo/checkov_output.json;type=application/json" \
+            -F "scan_type=Checkov Scan" \
+            -F "engagement_name=checkov" \
+            -F "product_name=Advanced-Security-Terraform" \
+            -F "auto_create_context=true"
