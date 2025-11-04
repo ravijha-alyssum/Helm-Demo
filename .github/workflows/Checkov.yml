@@ -35,7 +35,7 @@ jobs:
           curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
             -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
             -F "file=@repo/checkov_output.json;type=application/json" \
-            -F "scan_type=Checkov Scan" \
+            -F "scan_type=Checkov" \
             -F "engagement_name=checkov" \
             -F "product_name=MyProduct" \
             -F "auto_create_context=true"
